@@ -1,127 +1,85 @@
-import pandas as pd
-import numpy as np
-import torch, time, random
+
+import pandas as pd, numpy as np, torch, random, time
 from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.model_selection import KFold, GroupKFold
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import mean_squared_error, r2_score
 
-# ---------- Configuration & Reproducibility ----------
-CSV_PATH   = "./all_curves.csv"
-KF_SPLITS  = 5
-USE_GROUPS = False
+# ---------- 基础配置 ----------
+CSV_PATH   = "./data/curves.csv"
+KF_SPLITS  = 5          # 五折交叉验证
+USE_GROUPS = False      # 若有 “Trial” 分组列可设 True
 EPOCHS     = 500
 BATCH_SIZE = 256
 PATIENCE   = 50
 SEED       = 41
+device     = "cuda" if torch.cuda.is_available() else "cpu"
 
-# set random seeds and device
 torch.manual_seed(SEED)
 np.random.seed(SEED)
 random.seed(SEED)
-device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-# ---------- Dataset ----------
+# ---------------- 1. 读数据 ----------------
+df = pd.read_csv('./data/curves.csv')          # ← 这里按你的路径
+I_cols       = [f'I_{i}' for i in range(60)]   # 60-point 序列列名
+feature_cols = [c for c in df.columns if c not in I_cols][:25]  # 前 25 维浓度
+
+TARGET_COLS  = I_cols                          # 目标输出列
+IN_DIM       = len(feature_cols)               # =25
+
+# ---------------- 2. Dataset ----------------
 class KineticDS(Dataset):
-    """
-    PyTorch Dataset for kinetic intensity curves.
-    - Scales 3 input features with a StandardScaler.
-    - Loads 60-dimensional intensity outputs.
-    """
-    def __init__(self, df, scaler=None, fit_scaler=False):
-        x = df[["TMB", "HRP", "H2O2"]].to_numpy(dtype="float32")
-        if fit_scaler:
+    def __init__(self, df, scaler, fit_scaler=False):
+        x = df[feature_cols].to_numpy(dtype='float32')
+
+        if fit_scaler:           # 只有训练集会执行
             scaler.fit(x)
-        # transform features and store as float32
-        self.x = scaler.transform(x).astype("float32")
-        # load 60 time-point intensities as targets
-        self.y = df[[f"I{i}" for i in range(60)]].to_numpy(dtype="float32")
+        self.x = scaler.transform(x).astype('float32')
+        self.y = df[TARGET_COLS].to_numpy(dtype='float32')
 
     def __len__(self):
-        """Return number of samples."""
         return len(self.x)
 
     def __getitem__(self, i):
-        """
-        Return one sample (features, targets) as torch tensors.
-        """
         return torch.from_numpy(self.x[i]), torch.from_numpy(self.y[i])
 
-
-# ---------- Model Definition ----------
+# ---------------- 3. 网络 ----------------
 class ResidualBlock(nn.Module):
-    """
-    Residual block with two linear layers:
-    - BatchNorm, ReLU, and Dropout between layers
-    - Skip connection adds input to output before final activation
-    """
     def __init__(self, d, p=0.1):
         super().__init__()
         self.net = nn.Sequential(
-            nn.Linear(d, d),
-            nn.BatchNorm1d(d),
-            nn.ReLU(),
-            nn.Dropout(p),
-            nn.Linear(d, d),
-            nn.BatchNorm1d(d),
-        )
-        self.act = nn.ReLU()
-
-    def forward(self, x):
-        """Apply block and add skip connection, then activation."""
-        return self.act(self.net(x) + x)
-
+            nn.Linear(d,d), nn.BatchNorm1d(d), nn.ReLU(), nn.Dropout(p),
+            nn.Linear(d,d), nn.BatchNorm1d(d)
+        ); self.act = nn.ReLU()
+    def forward(self, x): return self.act(self.net(x) + x)
 
 class KineticNet(nn.Module):
-    """
-    Deep feedforward network for curve prediction:
-    - Input layer projects 3 features to hidden size
-    - Sequence of ResidualBlocks for representation learning
-    - Output layer predicts 60 intensity values
-    """
     def __init__(self, h=256, depth=5):
         super().__init__()
-        self.input = nn.Sequential(
-            nn.Linear(3, h),
-            nn.BatchNorm1d(h),
-            nn.ReLU()
-        )
+        self.input  = nn.Sequential(nn.Linear(IN_DIM, h), nn.BatchNorm1d(h), nn.ReLU())
         self.blocks = nn.Sequential(*[ResidualBlock(h) for _ in range(depth)])
         self.output = nn.Linear(h, 60)
+    def forward(self, x): return self.output(self.blocks(self.input(x)))
 
-    def forward(self, x):
-        """Forward pass through input layer, residual blocks, and output layer."""
-        return self.output(self.blocks(self.input(x)))
-
-
-# ---------- Train & Validate One Fold ----------
+# ---------- 4. 单折训练 / 验证 ----------
 def train_one_fold(train_df, val_df):
-    """
-    Train the model on one fold and evaluate on validation set.
-    Returns:
-        best_val_loss (float): lowest validation MSE achieved
-        val_r2        (float): R² score on validation set
-    """
     scaler = StandardScaler()
 
-    # create datasets and loaders
     tr_ds  = KineticDS(train_df, scaler, fit_scaler=True)
     val_ds = KineticDS(val_df,   scaler, fit_scaler=False)
-    tr_dl  = DataLoader(tr_ds, BATCH_SIZE, shuffle=True)
-    val_dl = DataLoader(val_ds, BATCH_SIZE)
+    tr_dl  = DataLoader(tr_ds, BATCH_SIZE, shuffle=True, drop_last=False)
+    val_dl = DataLoader(val_ds, BATCH_SIZE, drop_last=False)
 
-    # initialize model, optimizer, scheduler, and loss
-    net    = KineticNet().to(device)
-    opt    = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=1e-4)
-    sched  = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=10)
+    net   = KineticNet().to(device)
+    opt   = torch.optim.AdamW(net.parameters(), lr=1e-3, weight_decay=1e-4)
+    sch   = torch.optim.lr_scheduler.ReduceLROnPlateau(opt, factor=0.5, patience=10)
     loss_fn = nn.MSELoss()
 
-    best_val_loss, bad_epochs = np.inf, 0
-    # training loop with early stopping
+    best_loss, bad = np.inf, 0
     for epoch in range(1, EPOCHS + 1):
-        # --- training phase ---
+        # ---- train ----
         net.train()
         for xb, yb in tr_dl:
             xb, yb = xb.to(device), yb.to(device)
@@ -129,41 +87,31 @@ def train_one_fold(train_df, val_df):
             loss_fn(net(xb), yb).backward()
             opt.step()
 
-        # --- validation phase ---
-        net.eval()
-        val_loss, preds, truths = 0.0, [], []
+        # ---- val ----
+        net.eval(); val_loss = 0.0; preds = []; truths = []
         with torch.no_grad():
             for xb, yb in val_dl:
                 xb, yb = xb.to(device), yb.to(device)
                 out = net(xb)
                 val_loss += loss_fn(out, yb).item() * len(xb)
-                preds.append(out.cpu())
-                truths.append(yb.cpu())
-        val_loss /= len(val_ds)
-        sched.step(val_loss)
+                preds.append(out.cpu()); truths.append(yb.cpu())
+        val_loss /= len(val_ds); sch.step(val_loss)
 
-        # check for improvement
-        if val_loss < best_val_loss - 1e-4:
-            best_val_loss, bad_epochs = val_loss, 0
-            best_state = net.state_dict()
+        # ---- early-stop ----
+        if val_loss < best_loss - 1e-4:
+            best_loss, bad, best_state = val_loss, 0, net.state_dict()
         else:
-            bad_epochs += 1
-            if bad_epochs >= PATIENCE:
-                break
+            bad += 1
+            if bad >= PATIENCE: break
 
-    # restore best model state and compute R² on validation
     net.load_state_dict(best_state)
-    P = torch.cat(preds).numpy()
-    T = torch.cat(truths).numpy()
+    P = torch.cat(preds).numpy(); T = torch.cat(truths).numpy()
     val_r2 = r2_score(T, P, multioutput='uniform_average')
-    return best_val_loss, val_r2
+    return best_loss, val_r2
 
-
-# ---------- Main Cross-Validation Flow ----------
-df = pd.read_csv(CSV_PATH)
+# ---------- 5. K-Fold 主流程 ----------
+df  = pd.read_csv(CSV_PATH)
 groups = df["Trial"] if USE_GROUPS else None
-
-# choose KFold or GroupKFold based on USE_GROUPS flag
 splitter = (
     GroupKFold(n_splits=df["Trial"].nunique())
     if USE_GROUPS else
@@ -171,14 +119,12 @@ splitter = (
 )
 
 fold_mse, fold_r2 = [], []
-for k, (tr_idx, val_idx) in enumerate(splitter.split(df, groups=groups), start=1):
+for k, (tr, va) in enumerate(splitter.split(df, groups=groups), 1):
     t0 = time.time()
-    mse, r2 = train_one_fold(df.iloc[tr_idx], df.iloc[val_idx])
-    fold_mse.append(mse)
-    fold_r2.append(r2)
-    print(f"Fold {k}:  MSE={mse:.2f} | R²={r2:.3f} | {time.time()-t0:.1f}s")
+    mse, r2 = train_one_fold(df.iloc[tr], df.iloc[va])
+    fold_mse.append(mse); fold_r2.append(r2)
+    print(f"Fold {k}: MSE={mse:.3f} | R²={r2:.3f} | {time.time()-t0:.1f}s")
 
-# summary of cross-validation performance
-print("\n=== Cross-Val Summary ===")
-print(f"MSE  mean ± std : {np.mean(fold_mse):.2f} ± {np.std(fold_mse):.2f}")
+print("\n=== 25D 输入·交叉验证汇总 ===")
+print(f"MSE  mean ± std : {np.mean(fold_mse):.3f} ± {np.std(fold_mse):.3f}")
 print(f"R²   mean ± std : {np.mean(fold_r2):.3f} ± {np.std(fold_r2):.3f}")

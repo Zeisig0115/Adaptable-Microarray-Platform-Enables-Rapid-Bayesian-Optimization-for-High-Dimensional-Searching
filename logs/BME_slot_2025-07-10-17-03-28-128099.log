@@ -1,0 +1,35 @@
+[2025-07-10 17:03:28,129][BME_slot][INFO][color_logger.py:203] Logfile: C:\PyCharm\Blueness\logs\BME_slot_2025-07-10-17-03-28-128099.log
+[2025-07-10 17:03:28,171][BME_slot][INFO][generic_advisor.py:227] [BO auto selection]  acq_optimizer_type: local_random.
+[2025-07-10 17:03:28,634][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,646][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,647][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,658][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,661][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,673][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,674][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,686][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,687][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,700][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,701][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,714][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,715][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,727][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,728][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,740][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,742][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,756][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,757][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,770][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,771][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,786][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,787][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,800][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,802][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,815][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,817][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,829][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,832][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,850][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:03:28,851][BME_slot][WARNING][history.py:242] Duplicate configuration detected!
+[2025-07-10 17:04:22,410][BME_slot][INFO][generic_advisor.py:467] Sample random config. rand_prob=0.100000.
+[2025-07-10 17:06:07,732][BME_slot][INFO][generic_advisor.py:467] Sample random config. rand_prob=0.100000.

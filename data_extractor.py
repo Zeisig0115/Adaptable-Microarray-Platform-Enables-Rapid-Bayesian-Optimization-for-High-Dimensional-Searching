@@ -15,11 +15,11 @@ BASE_DIR = Path("./data")
 # Names of input Excel file, .mat subdirectory, and output CSV file
 EXCEL_NAME = "3 dimensional data concentrations.xlsx"
 MAT_SUBDIR = ""          # leave empty if .mat files are directly under BASE_DIR
-OUT_NAME = "botorch_ready.csv"
+OUT_NAME = "data.csv"
 
 EXCEL_PATH = BASE_DIR / EXCEL_NAME
 MAT_DIR    = BASE_DIR / MAT_SUBDIR
-OUT_PATH   = BASE_DIR / OUT_NAME
+OUT_PATH   = OUT_NAME
 
 # Window size for moving‐average smoothing
 SMOOTH_WIN = 5
@@ -175,7 +175,7 @@ def main():
             for c in range(24):
                 t90, I_max, tail_pct = metrics_from_curve(cube[:, r, c], SMOOTH_WIN)
 
-                row = [trial]
+                row = []
                 # Essential reagents
                 for label in ESSENTIALS:
                     row.append(comps[label][r, c])
@@ -183,26 +183,26 @@ def main():
                 for label in sorted(ADDITIVE_MAP):
                     lvl = comps[label][r, c]
                     row.extend([int(lvl > 0), lvl])
-                # Curve metrics and validity flag
-                row.extend([t90, I_max, tail_pct, True])
+                # Curve metrics (保留 t90, I_max, tail_pct)
+                row.extend([t90, I_max, tail_pct])
                 records.append(row)
 
-    # Build output column names
+    # Build output column names (去掉 "Trial" 和 "valid")
     columns = (
-        ["Trial"]
-        + list(ESSENTIALS.values())
+        list(ESSENTIALS.values())
         + [
             f"{ADDITIVE_MAP[label]}_{suffix}"
             for label in sorted(ADDITIVE_MAP)
             for suffix in ("sw", "lvl")
         ]
-        + ["t90", "I_max", "tail_pct", "valid"]
+        + ["t90", "I_max", "tail_pct"]
     )
 
     # Create DataFrame and write to CSV
     df_out = pd.DataFrame.from_records(records, columns=columns)
     df_out.to_csv(OUT_PATH, index=False)
     print(f"✅ Exported {OUT_PATH} with {len(records)} rows")
+
 
 
 if __name__ == "__main__":
