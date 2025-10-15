@@ -22,6 +22,14 @@ from model import PRFModel
 from torch.utils.data import DataLoader, TensorDataset
 from model import MLPRegressor, MLPEnsembleModel
 
+from ngboost import NGBRegressor
+from ngboost.distns import Normal
+from sklearn.tree import DecisionTreeRegressor
+from model import NGBoostModel
+
+
+from botorch.models.gp_regression_mixed import MixedSingleTaskGP
+
 
 def _set_seeds(seed: int):
     torch.manual_seed(seed)
@@ -33,7 +41,6 @@ def _set_seeds(seed: int):
         pass
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)  # <—— 新增
-
 
 
 def _make_bounds_from_train(X_train: torch.Tensor) -> torch.Tensor:
@@ -64,24 +71,61 @@ def fit_saasbo(
         warmup_steps=warmup,
         num_samples=num_samples,
         thinning=thinning,
-        disable_progbar=False,
+        disable_progbar=True,
     )
     _ = model.posterior(X_tr[: min(5, X_tr.shape[0])], observation_noise=True)
     return model
 
 
-def fit_gp(X_tr: torch.Tensor, y_tr: torch.Tensor, seed: int):
+# def fit_gp(X_tr: torch.Tensor, y_tr: torch.Tensor, seed: int):
+#     _set_seeds(seed)
+#     dev = X_tr.device
+#     d = X_tr.shape[1]
+#     model = SingleTaskGP(
+#         train_X=X_tr,
+#         train_Y=y_tr,
+#         input_transform=Normalize(d=d, bounds=_make_bounds_from_train(X_tr)),
+#         outcome_transform=Standardize(m=1),
+#     ).to(dev)  # <—— 新增
+#
+#     mll = ExactMarginalLogLikelihood(model.likelihood, model).to(dev)  # <—— 新增
+#     fit_gpytorch_mll(mll)
+#     _ = model.posterior(X_tr[: min(5, X_tr.shape[0])], observation_noise=True)
+#     return model
+
+
+def fit_gp(
+        X_tr: torch.Tensor,
+        y_tr: torch.Tensor,
+        seed: int,
+        cat_dims: list[int] | None = None  # <--- 新增参数
+):
     _set_seeds(seed)
     dev = X_tr.device
     d = X_tr.shape[1]
-    model = SingleTaskGP(
-        train_X=X_tr,
-        train_Y=y_tr,
-        input_transform=Normalize(d=d, bounds=_make_bounds_from_train(X_tr)),
-        outcome_transform=Standardize(m=1),
-    ).to(dev)  # <—— 新增
 
-    mll = ExactMarginalLogLikelihood(model.likelihood, model).to(dev)  # <—— 新增
+    bounds = _make_bounds_from_train(X_tr)
+
+    if cat_dims and len(cat_dims) > 0:
+        print(f"  -> Using MixedSingleTaskGP for categorical dimensions: {cat_dims}")
+        model = MixedSingleTaskGP(
+            train_X=X_tr,
+            train_Y=y_tr,
+            cat_dims=cat_dims,
+            input_transform=Normalize(d=d, bounds=bounds),
+            outcome_transform=Standardize(m=1),
+        ).to(dev)
+    else:
+        print("  -> Using standard SingleTaskGP (all features are continuous).")
+        model = SingleTaskGP(
+            train_X=X_tr,
+            train_Y=y_tr,
+            input_transform=Normalize(d=d, bounds=bounds),
+            outcome_transform=Standardize(m=1),
+        ).to(dev)
+    # --- 修改结束 ---
+
+    mll = ExactMarginalLogLikelihood(model.likelihood, model).to(dev)
     fit_gpytorch_mll(mll)
     _ = model.posterior(X_tr[: min(5, X_tr.shape[0])], observation_noise=True)
     return model
@@ -233,6 +277,35 @@ def fit_mlp_ensemble(
         device=device,
     )
 
+
+
+def fit_ngboost(
+    X_tr: torch.Tensor,
+    y_tr: torch.Tensor,
+    seed: int = 0,
+    n_estimators: int = 500,
+    learning_rate: float = 0.01,
+    max_depth: int = 3,
+    col_sample: float = 1.0,
+    minibatch_frac: float = 1.0,
+    verbose: bool = False,
+):
+    X_np = X_tr.detach().cpu().numpy()
+    y_np = y_tr.view(-1).detach().cpu().numpy()
+
+    base = DecisionTreeRegressor(max_depth=max_depth, random_state=seed)
+    ngb = NGBRegressor(
+        Dist=Normal,                # 默认回归分布 Normal，也可换 LogNormal/Exponential
+        Base=base,                  # 任意 sklearn 回归器都可作基学习器
+        n_estimators=n_estimators,
+        learning_rate=learning_rate,
+        col_sample=col_sample,
+        minibatch_frac=minibatch_frac,
+        random_state=seed,
+        verbose=verbose,
+    )
+    ngb.fit(X_np, y_np)  # 标准 sklearn 拟合流程；pred_dist(X) 可取出分布与参数。:contentReference[oaicite:2]{index=2}
+    return NGBoostModel(ngb=ngb, device=X_tr.device)
 
 
 
